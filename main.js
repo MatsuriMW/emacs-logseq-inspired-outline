@@ -18,6 +18,8 @@
 //   · 方向键要用最高优先级：Obsidian 自己在实时预览里给 ↑↓ 挂了同级（high）的处理，
 //     有选区时会把选区收成光标并吞掉按键，插件的同级处理排在它后面，根本轮不到
 //   · 选中状态下按 ⇧↑ / ⇧↓：把上一块 / 下一块加进选区
+//   · 选中状态下按字母改任务状态（STATE_KEYS）：t TODO · d DOING · x DONE · y YES · n NO · m MAYBE · c CANCELLED · w WAITING，
+//     选中几块就每块首行各改一次，子项不动；已经是这个状态再按一次就去掉关键词。别的字母照旧吞掉
 //   · 选中状态下按 Enter：回到编辑，光标放在当前块首行末尾
 //   · 再按一次 Esc：取消选中；没移动过就回到原来的光标位置，移动过就放在当前块首行末尾
 //   · 已有选区时按 Esc：选中选区跨过的所有块
@@ -89,6 +91,16 @@ const SELECTED_NOOP = /^editor:(toggle-(bold|italics|strikethrough|highlight.*|c
 const SELECTED_EACH = /^(task-toggle:.*|todoseq:(toggle-task-state|cycle-task-state|set-priority-.*|toggle-important|toggle-urgent)|editor:(toggle-checklist-status|cycle-list-checklist))$/;
 const SELECTED_KEEP = /^bullet:zoom-in$/;
 const SELECTED_MAP = { "editor:swap-line-up": "bullet:move-list-item-up", "editor:swap-line-down": "bullet:move-list-item-down" };
+// 整块选中时按一个字母 = 把每块首行的任务关键词换成这个（已经是它就去掉）
+const STATE_KEYS = { t: "TODO", d: "DOING", x: "DONE", y: "YES", n: "NO", m: "MAYBE", c: "CANCELLED", w: "WAITING" };
+// 认得的任务关键词（换的时候先去掉旧的）：TODOseq / Logseq 自带的、上面字母表里的，再加上 TODOseq 设置里自定义的
+const BASE_KEYWORDS = ["TODO", "LATER", "NOW", "DOING", "IN-PROGRESS", "WAIT", "WAITING", "DONE", "CANCELED", "CANCELLED", "ARCHIVED"];
+function taskKeywords(app) {
+	const words = new Set([...BASE_KEYWORDS, ...Object.values(STATE_KEYS)]);
+	const st = app.plugins?.plugins?.todoseq?.settings;
+	if (st) for (const [k, v] of Object.entries(st)) if (/^additional\w*Keywords$/.test(k) && Array.isArray(v)) v.forEach((w) => words.add(w));
+	return words;
+}
 
 const ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
 const TAB_WIDTH = 4;
@@ -678,8 +690,33 @@ module.exports = class LogseqEditing extends Plugin {
 			this.runOn(view, e.key === "ArrowUp" ? "bullet:move-list-item-up" : "bullet:move-list-item-down");
 			return true;
 		}
+		// 字母改任务状态（STATE_KEYS）；中文输入法下 key 是 Process，按物理键位认
+		if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+			const k = e.key === "Process" ? (e.code.match(/^Key([A-Z])$/) || [])[1]?.toLowerCase() : e.key;
+			if (STATE_KEYS[k]) { this.setState(view, STATE_KEYS[k]); return true; }
+		}
 		// ⌥ + 字母在 Mac 上打出的是 ∑ ß 这类字符，但 ⌥W / ⌥S 是折叠快捷键，不能当成打字吞掉
 		return !e.metaKey && !e.ctrlKey && !e.altKey && [...e.key].length === 1;
+	}
+
+	// 选中的每一块（⇧↓ 加进来的一棵棵子树，各取根）首行：任务关键词换成 kw，已经是 kw 就去掉；子项不动，改完仍然整块选中
+	setState(view, kw) {
+		const s = this.active(view);
+		const doc = view.state.doc, getLine = (i) => doc.line(i + 1).text;
+		const words = taskKeywords(this.app);
+		const changes = [];
+		for (let r = s.start; r >= 0 && r <= s.end; r = nextItemAfter(getLine, doc.lines, subtreeEnd(getLine, doc.lines, r))) {
+			const line = doc.line(r + 1);
+			const m = line.text.match(/^([ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[.\][ \t]+)?)(\S+)?/);
+			if (!m) continue;
+			const old = m[2] && words.has(m[2]) ? m[2] : null;
+			const from = line.from + m[1].length;
+			changes.push({ from, to: old ? Math.min(line.to, from + old.length + 1) : from, insert: old === kw ? "" : kw + " " });
+		}
+		if (!changes.length) return;
+		const tr = view.state.update({ changes, effects: setBlock.of(null), userEvent: "input" });
+		view.dispatch(tr);
+		this.selectLines(view, s.start, s.end, { anchor: tr.changes.mapPos(s.anchor), head: tr.changes.mapPos(s.head), moved: s.moved });
 	}
 
 	// 整块删掉之后：原来位置上现在是列表项（下一块补上来了）就选它，否则选上面最近的一块，再没有就往下找；都没有才退出

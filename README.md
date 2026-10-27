@@ -12,7 +12,8 @@ I moved from Logseq to Obsidian, and what I missed most was how Logseq treats ev
   - ↑ / ↓ move between blocks, ⇧↑ / ⇧↓ extend the selection;
   - the block stays selected after Tab / ⇧Tab or ⌥↑↓;
   - ⌫ deletes the block and selects the next one;
-  - typing does not replace the block; Enter returns to editing; Esc again cancels.
+  - a letter sets the task keyword on the first line of each selected block: `t` TODO, `d` DOING, `x` DONE, `y` YES, `n` NO, `m` MAYBE, `c` CANCELLED, `w` WAITING. Press the same letter again to remove the keyword. Children are left alone. Keywords are plain text in the note, so this works with or without a task plugin; TODOseq's custom keywords are recognised when it is installed;
+  - other typing does not replace the block; Enter returns to editing; Esc again cancels.
 - **Wrap the selection in pairs.** Select text and type `(` `[` `"` `「` `《` and so on (any input method): the text is wrapped instead of replaced. Press `[` twice for a wikilink. Press Enter afterwards to jump past the closing symbol.
 - **⌘K** inserts a horizontal rule below the current block.
 - **Convert block types** (⌘\\ cycles): bullet list → numbered list → paragraph. Numbered lists support `1. 2. 3.`, paper-style `4.1 4.2` and letters `a. b. c.`.
