@@ -82,7 +82,14 @@
 //     子块变成母块里的一段文字（去掉列表符号、保留缩进），它自己的子块升一级。1. 编号去掉，4.1 / a. 留在文字里
 //   · 普通段落改成列表：一段（连续的几行）= 一块，第二行起缩进成续行；连着改几段时，段落之间的空行去掉，成为同一个列表
 //   · 转换完 Esc 选中状态还在（改成段落的除外），一次撤销全部撤回
-const { Plugin, Notice, Modal, Platform } = require("obsidian");
+//
+// 六、双链在拆分视图 / 侧边栏里打开（仿 Logseq 的 Shift 点击）
+//   · 双链的右键菜单（编辑器、阅读视图、搜索结果……Obsidian 各处的双链右键都算）加两项：「在拆分视图中打开」「在侧边栏中打开」
+//     Obsidian 自带的「在新标签组中打开」（Open to the right）就是拆分视图，但只在文件存在时才有；换成这一项，免得重复
+//   · Shift 点双链：在侧边栏打开。编辑器里和 Obsidian 自己点链接一样，只认点在链接文字上
+//   · 双链指向的文件不存在：打开时自动新建（建在哪按 Obsidian「新笔记的存放位置」设置）
+//   · 装了 roam-backlinks 就借它的右侧栏叠放（和它反链面板里 Shift 点一样，接在上一页下面）；没装就在右侧栏开个新标签
+const { Plugin, Notice, Modal, Platform, parseLinktext, editorInfoField } = require("obsidian");
 const { keymap, EditorView } = require("@codemirror/view");
 const { Prec, EditorSelection, EditorState, StateField, StateEffect } = require("@codemirror/state");
 
@@ -439,6 +446,20 @@ module.exports = class LogseqEditing extends Plugin {
 		const wrapped = function (cmd, ...rest) { return plugin.routeCommand(cmd, () => orig.call(this, cmd, ...rest)); };
 		cmds.executeCommand = wrapped;
 		this.register(() => { if (cmds.executeCommand === wrapped) cmds.executeCommand = orig; });
+		// 双链右键菜单：Obsidian 各处的双链右键都走 handleLinkContextMenu，同样包一层，卸载时还原
+		const ws = this.app.workspace, origMenu = ws.handleLinkContextMenu;
+		const wrappedMenu = function (menu, linktext, sourcePath, ...rest) {
+			const shown = origMenu.call(this, menu, linktext, sourcePath, ...rest);
+			if (shown) plugin.addLinkMenuItems(menu, linktext, sourcePath);
+			return shown;
+		};
+		ws.handleLinkContextMenu = wrappedMenu;
+		this.register(() => { if (ws.handleLinkContextMenu === wrappedMenu) ws.handleLinkContextMenu = origMenu; });
+		// Shift 点双链：在 window 的捕获阶段先拦下，轮不到编辑器扩选、Obsidian 在原处打开；新开的小窗口也挂上
+		const onShiftClick = (e) => this.onShiftClick(e);
+		const listen = (win) => { this.registerDomEvent(win, "mousedown", onShiftClick, true); this.registerDomEvent(win, "click", onShiftClick, true); };
+		listen(window);
+		this.registerEvent(ws.on("window-open", (w, win) => listen(win)));
 		this.beforeCompose = new WeakMap();   // view → 输入法开始组字前的 state
 		this.addCommand({
 			id: "insert-divider-below",
@@ -1112,6 +1133,64 @@ module.exports = class LogseqEditing extends Plugin {
 		const prev = prevSibling(ctx, group[0]), plb = prev && labelOf(unitText(ctx, prev));
 		const start = plb?.kind === "letter" ? plb.index + 1 : 1;
 		return { kind: "letter", markerAt: (k) => `- ${letterOf(start + k)}. ` };
+	}
+
+	// ---------- 双链在拆分视图 / 侧边栏里打开 ----------
+
+	// 右键菜单加「在拆分视图中打开」「在侧边栏中打开」：文件不存在时也有，打开时自动建（openLinkText 找不到文件会自己建）。
+	// 自带的「在新标签组中打开」（图标 separator-vertical）和第一项是同一个动作，去掉
+	addLinkMenuItems(menu, linktext, sourcePath) {
+		if (!Platform.isPhone) {
+			menu.items = menu.items.filter((it) => !(it.section === "open" && it.iconEl?.querySelector(".lucide-separator-vertical")));
+			menu.addItem((item) => item.setSection("open").setTitle("在拆分视图中打开").setIcon("lucide-separator-vertical")
+				.onClick(() => this.app.workspace.openLinkText(linktext, sourcePath, "split")));
+		}
+		menu.addItem((item) => item.setSection("open").setTitle("在侧边栏中打开").setIcon("lucide-panel-right")
+			.onClick(() => this.openInSidebar(linktext, sourcePath)));
+	}
+
+	// Shift 点双链 = 在侧边栏打开。mousedown 时打开，跟着来的 click 只吞掉
+	onShiftClick(e) {
+		if (e.button !== 0 || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+		const link = this.linkAt(e);
+		if (!link) return;
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		if (e.type === "mousedown") this.openInSidebar(link.linktext, link.sourcePath);
+	}
+
+	// 点到的双链 → { linktext, sourcePath }，不是双链返回 null。两种：
+	//   · 渲染出来的 <a class="internal-link">：阅读视图、嵌入、反链面板……
+	//   · 编辑器里的双链：和 Obsidian 自己的规则一样，点在链接文字（.cm-underline）上才算，链接是什么看它的 getClickableTokenAt
+	linkAt(e) {
+		const t = e.target;
+		if (!t?.closest) return null;
+		const a = t.closest("a.internal-link");
+		if (a) {
+			let sourcePath = "";
+			this.app.workspace.iterateAllLeaves((leaf) => { if (!sourcePath && leaf.view.containerEl.contains(a)) sourcePath = leaf.view.file?.path || ""; });
+			return { linktext: a.getAttribute("data-href") || a.getAttribute("href") || "", sourcePath: sourcePath || this.app.workspace.getActiveFile()?.path || "" };
+		}
+		const cmEl = t.closest(".cm-editor");
+		if (!cmEl || !t.closest(".cm-underline") || !t.closest(".cm-hmd-internal-link, .cm-link")) return null;
+		const view = EditorView.findFromDOM(cmEl), info = view?.state.field(editorInfoField, false), editor = info?.editor;
+		const pos = view?.posAtCoords({ x: e.clientX, y: e.clientY });
+		const tok = pos != null && editor?.getClickableTokenAt?.(editor.offsetToPos(pos));
+		return tok?.type === "internal-link" ? { linktext: tok.text, sourcePath: info.file?.path || "" } : null;
+	}
+
+	// 在右侧栏打开双链，文件不存在先建。装了 roam-backlinks 就用它的叠放（它只打开已有的文件，所以先建好）
+	async openInSidebar(linktext, sourcePath) {
+		const ws = this.app.workspace, rb = this.app.plugins.plugins["roam-backlinks"];
+		if (rb?.openStackedLink) {
+			const { path } = parseLinktext(linktext);
+			if (!this.app.metadataCache.getFirstLinkpathDest(path, sourcePath)) await this.app.fileManager.createNewMarkdownFileFromLinktext(path, sourcePath);
+			return rb.openStackedLink(linktext, sourcePath);
+		}
+		if (ws.rightSplit.collapsed) ws.rightSplit.expand();
+		const leaf = ws.getRightLeaf(false);
+		await leaf.openLinkText(linktext, sourcePath);
+		ws.revealLeaf(leaf);
 	}
 
 	// ---------- ⌘K 分割线 ----------

@@ -17,6 +17,7 @@ I moved from Logseq to Obsidian, and what I missed most was how Logseq treats ev
 - **Wrap the selection in pairs.** Select text and type `(` `[` `"` `「` `《` and so on (any input method): the text is wrapped instead of replaced. Press `[` twice for a wikilink. Press Enter afterwards to jump past the closing symbol.
 - **⌘K** inserts a horizontal rule below the current block.
 - **Convert block types** (⌘\\ cycles): bullet list → numbered list → paragraph. Numbered lists support `1. 2. 3.`, paper-style `4.1 4.2` and letters `a. b. c.`.
+- **Shift-click a link to open it in the sidebar**, in the editor or in reading view. The link's right-click menu also gets two entries, open in split view and open in sidebar (the first replaces Obsidian's own "Open to the right", which only appears when the note exists; menu labels are in Chinese for now, like the command names). If the linked note doesn't exist yet, it is created when opened. With [Roam Backlinks](https://github.com/MatsuriMW/roam-backlinks) installed, the sidebar stacks each page below the previous one.
 
 ## Inspired by Emacs (and Bike)
 
