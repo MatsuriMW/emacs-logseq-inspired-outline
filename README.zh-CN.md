@@ -8,6 +8,8 @@
 
 > 原名「编辑体验 Logseq 化」（id `esc-select-block`）。
 
+![按 Esc 选中「Write the release notes」连同它的子块，⇧↓ 把选区扩到下一块。](https://raw.githubusercontent.com/MatsuriMW/emacs-logseq-inspired-outline/main/docs/screenshot.png)
+
 **目录**
 
 - [受 Logseq 启发](#受-logseq-启发)
