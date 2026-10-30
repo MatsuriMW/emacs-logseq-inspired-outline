@@ -99,16 +99,16 @@ const { Prec, EditorSelection, EditorState, StateField, StateEffect } = require(
 
 // 整块选中状态下各类命令怎么处理，见 routeCommand
 const SELECTED_NOOP = /^editor:(toggle-(bold|italics|strikethrough|highlight.*|code|inline-math|blockquote|comments|bullet-list|numbered-list)|set-heading.*|insert-(wikilink|embed|link|tag|callout|codeblock|mathblock|table|footnote|horizontal-rule)|clear-formatting|rename-heading)$/;
-const SELECTED_EACH = /^(task-toggle:.*|todoseq:(toggle-task-state|cycle-task-state|set-priority-.*|toggle-important|toggle-urgent)|editor:(toggle-checklist-status|cycle-list-checklist))$/;
+const SELECTED_EACH = /^(task-toggle:.*|(?:todoseq|logseq-style-tasks):(toggle-task-state|cycle-task-state|cycle-group-.*|set-priority-.*|toggle-important|toggle-urgent)|editor:(toggle-checklist-status|cycle-list-checklist))$/;
 const SELECTED_KEEP = /^bullet:zoom-in$/;
 const SELECTED_MAP = { "editor:swap-line-up": "bullet:move-list-item-up", "editor:swap-line-down": "bullet:move-list-item-down" };
 // 整块选中时按一个字母 = 把每块首行的任务关键词换成这个（已经是它就去掉）
 const STATE_KEYS = { t: "TODO", d: "DOING", x: "DONE", y: "YES", n: "NO", m: "MAYBE", c: "CANCELLED", w: "WAITING" };
-// 认得的任务关键词（换的时候先去掉旧的）：TODOseq / Logseq 自带的、上面字母表里的，再加上 TODOseq 设置里自定义的
+// 认得的任务关键词（换的时候先去掉旧的）：TODOseq / Logseq 自带的、上面字母表里的，再加上 Logseq Style Tasks（或 TODOseq）设置里自定义的
 const BASE_KEYWORDS = ["TODO", "LATER", "NOW", "DOING", "IN-PROGRESS", "WAIT", "WAITING", "DONE", "CANCELED", "CANCELLED", "ARCHIVED"];
 function taskKeywords(app) {
 	const words = new Set([...BASE_KEYWORDS, ...Object.values(STATE_KEYS)]);
-	const st = app.plugins?.plugins?.todoseq?.settings;
+	const st = (app.plugins?.plugins?.["logseq-style-tasks"] ?? app.plugins?.plugins?.todoseq)?.settings;
 	if (st) for (const [k, v] of Object.entries(st)) if (/^additional\w*Keywords$/.test(k) && Array.isArray(v)) v.forEach((w) => words.add(w));
 	return words;
 }
