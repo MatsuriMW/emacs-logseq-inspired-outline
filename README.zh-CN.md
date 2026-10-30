@@ -8,6 +8,14 @@
 
 > 原名「编辑体验 Logseq 化」（id `esc-select-block`）。
 
+**目录**
+
+- [受 Logseq 启发](#受-logseq-启发)
+- [受 Emacs（及 Bike）启发](#受-emacs及-bike启发)
+- [安装](#安装)
+- [反馈与后续](#反馈与后续)
+- [License](#license)
+
 ## 受 Logseq 启发
 
 - **Esc 选中整块**：光标在列表里按 Esc，选中这个列表项连同它所有的子项。选中后：

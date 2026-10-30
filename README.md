@@ -6,6 +6,14 @@ Outliner editing improvements for writing in lists in Obsidian.
 
 I moved from Logseq to Obsidian, and what I missed most was how Logseq treats every list item as a *block* you can grab and move. The other half of the inspiration comes from Emacs (org-mode outline editing) and Bike, an outliner shaped by it: jump to the parent, add a new item at the end of the current level, fold a few rows into a group. These moves come naturally in Emacs-style outliners, and Obsidian doesn't have them. This plugin brings them over.
 
+**Contents**
+
+- [Inspired by Logseq](#inspired-by-logseq)
+- [Inspired by Emacs (and Bike)](#inspired-by-emacs-and-bike)
+- [Install](#install)
+- [Feedback and updates](#feedback-and-updates)
+- [License](#license)
+
 ## Inspired by Logseq
 
 - **Esc selects the whole block.** With the cursor in a list, press Esc to select the item together with all of its children. While selected:
