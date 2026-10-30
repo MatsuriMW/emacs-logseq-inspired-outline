@@ -1,7 +1,7 @@
 {
   "id": "emacs-logseq-inspired-outline",
   "name": "Emacs Logseq Inspired Outline",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "minAppVersion": "1.0.0",
   "description": "Outliner editing inspired by Logseq and Emacs: Esc to select whole list blocks, move between blocks, wrap selections in pairs, jump to the parent block, create a sibling at the end of the level, group rows, convert block types, and a Logseq-style sidebar where Shift-clicked links stack and can be collapsed or closed.",
   "author": "马自立",
