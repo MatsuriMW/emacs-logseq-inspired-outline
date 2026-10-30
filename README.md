@@ -31,6 +31,10 @@ Commands can be rebound under Settings → Hotkeys (search "Emacs Logseq Inspire
 
 Download `main.js` and `manifest.json` from [Releases](https://github.com/MatsuriMW/emacs-logseq-inspired-outline/releases) into `<vault>/.obsidian/plugins/emacs-logseq-inspired-outline/` and enable it under Settings → Community plugins. Or install with BRAT: `MatsuriMW/emacs-logseq-inspired-outline`.
 
+## Feedback and updates
+
+To follow new features, send feedback or keep up with progress, follow me on Twitter: [@Matsurimywaifu](https://x.com/Matsurimywaifu).
+
 ## License
 
 MIT

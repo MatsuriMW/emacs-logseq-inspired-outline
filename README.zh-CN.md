@@ -33,6 +33,10 @@
 
 从 [Releases](https://github.com/MatsuriMW/emacs-logseq-inspired-outline/releases) 下载 `main.js`、`manifest.json`，放进库里的 `.obsidian/plugins/emacs-logseq-inspired-outline/`，在 设置 → 第三方插件 里启用。也可以用 BRAT 装：`MatsuriMW/emacs-logseq-inspired-outline`。
 
+## 反馈与后续
+
+想追踪后续功能、反馈问题、关注后续进展，欢迎关注我的 Twitter：[@Matsurimywaifu](https://x.com/Matsurimywaifu)。
+
 ## License
 
 MIT
