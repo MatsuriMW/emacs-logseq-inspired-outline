@@ -83,13 +83,17 @@
 //   · 普通段落改成列表：一段（连续的几行）= 一块，第二行起缩进成续行；连着改几段时，段落之间的空行去掉，成为同一个列表
 //   · 转换完 Esc 选中状态还在（改成段落的除外），一次撤销全部撤回
 //
-// 六、双链在拆分视图 / 侧边栏里打开（仿 Logseq 的 Shift 点击）
+// 六、Logseq 式侧边栏：双链在拆分视图 / 侧边栏里打开，侧边栏里的页叠放、折叠、批量关闭
 //   · 双链的右键菜单（编辑器、阅读视图、搜索结果……Obsidian 各处的双链右键都算）加两项：「在拆分视图中打开」「在侧边栏中打开」
 //     Obsidian 自带的「在新标签组中打开」（Open to the right）就是拆分视图，但只在文件存在时才有；换成这一项，免得重复
 //   · Shift 点双链：在侧边栏打开。编辑器里和 Obsidian 自己点链接一样，只认点在链接文字上
 //   · 双链指向的文件不存在：打开时自动新建（建在哪按 Obsidian「新笔记的存放位置」设置）
-//   · 装了 roam-backlinks 就借它的右侧栏叠放（和它反链面板里 Shift 点一样，接在上一页下面）；没装就在右侧栏开个新标签
-const { Plugin, Notice, Modal, Platform, parseLinktext, editorInfoField } = require("obsidian");
+//   · 叠放：新开的页接在右侧栏最下面那篇笔记的下面，一页一组（见 stackLeaf）
+//   · 右侧栏里的笔记，右键标签页头或点右上角「⋯」：关闭 / 关闭其他 / 全部关闭，折叠 / 折叠其他 / 全部折叠，展开 / 全部展开，在主区打开
+//     （和 Logseq 侧边栏每一页的菜单一样）。折叠 = 只留标签页头；点标签页头或这一页被激活就展开
+//   · roam-backlinks 里有同样的一份侧边栏代码：两个都装时只跑一份，叠放规则相同，叠成同一列（见 STACK_OWNER）
+//   · 这一节的菜单文字跟 Obsidian 的界面语言：中文显示中文，其余显示英文
+const { Plugin, Component, Notice, Modal, Platform, editorInfoField, getLanguage, moment } = require("obsidian");
 const { keymap, EditorView } = require("@codemirror/view");
 const { Prec, EditorSelection, EditorState, StateField, StateEffect } = require("@codemirror/state");
 
@@ -438,6 +442,88 @@ const blockField = StateField.define({
 	},
 });
 
+// ---------- 右侧栏叠放（roam-backlinks 里有同样的一份，改一边要同步改另一边） ----------
+// 两个插件都装时只跑一份：先加载的那个把自己的 id 登记在 workspace.sidebarStackOwner，侧边栏菜单、折叠展开由它管；
+// 它停用时让出来、发 sidebar-stack-released，另一个接手。两边打开新页都用 stackLeaf 这条规则，所以叠成同一列。彼此不调用对方的函数
+const STACK_OWNER = "sidebarStackOwner", STACK_RELEASED = "sidebar-stack-released", STACK_COLLAPSED = "sidebar-stack-collapsed";
+
+// 第六节的界面文字：[中文, English]
+const ZH = /^zh/i.test(typeof getLanguage === "function" ? getLanguage() : moment.locale());
+const TEXT = {
+	openInSplit: ["在拆分视图中打开", "Open in split view"],
+	openInSidebar: ["在侧边栏中打开", "Open in sidebar"],
+	stackClose: ["关闭", "Close"],
+	stackCloseOthers: ["关闭侧边栏里的其他笔记", "Close other notes in the sidebar"],
+	stackCloseAll: ["关闭侧边栏里的全部笔记", "Close all notes in the sidebar"],
+	stackCollapse: ["折叠", "Collapse"],
+	stackCollapseOthers: ["折叠其他", "Collapse others"],
+	stackCollapseAll: ["全部折叠", "Collapse all"],
+	stackExpand: ["展开", "Expand"],
+	stackExpandAll: ["全部展开", "Expand all"],
+	stackOpenInMain: ["在主区打开", "Open in main area"],
+};
+const tr = (key) => TEXT[key][ZH ? 0 : 1];
+
+// 右侧栏里打开的笔记，从上到下：能按扩展名打开文件的视图（Markdown、PDF、画布……）和空白标签都算，反链、大纲、各插件的面板不算。
+// 侧边栏里没激活的标签是延迟视图，leaf.view 只是占位，类型要读 getViewState()
+function sidebarNotes(app) {
+	const ws = app.workspace, types = new Set(["empty", ...Object.values(app.viewRegistry.typeByExtension || {})]);
+	const notes = [];
+	ws.iterateAllLeaves((leaf) => { if (leaf.getRoot() === ws.rightSplit && types.has(leaf.getViewState().type)) notes.push(leaf); });
+	return notes;
+}
+
+// 叠放的新页放哪：接在右侧栏最下面那篇笔记的下面（往下切出新的一组）；右侧栏里还没有笔记，就开在最上面那组的新标签里。
+// 不记状态，只看右侧栏现在的样子，所以重启 Obsidian 之后也接得上
+function stackLeaf(app) {
+	const ws = app.workspace, last = sidebarNotes(app).pop(), top = ws.rightSplit.children[0];
+	if (ws.rightSplit.collapsed) ws.rightSplit.expand();
+	let leaf = null;
+	if (last) try { leaf = ws.createLeafBySplit(last, "horizontal", false); } catch (e) {}
+	if (!leaf && top) try { leaf = ws.createLeafInParent(top, 0); } catch (e) {}
+	return leaf || ws.getRightLeaf(true);   // 手机上侧边栏是抽屉，切分不了
+}
+
+// 折叠 = 这一页所在的那组标签只留标签页头：类名加在组上，styles.css 里两个插件写的是同一条
+const stackGroup = (leaf) => leaf.parent?.containerEl;
+const isStackCollapsed = (leaf) => !!stackGroup(leaf)?.hasClass(STACK_COLLAPSED);
+const setStackCollapsed = (leaf, on) => stackGroup(leaf)?.toggleClass(STACK_COLLAPSED, on);
+
+// 右侧栏笔记的菜单（标签页头右键 / 视图右上角「⋯」），和 Logseq 侧边栏每一页的菜单一样，有几页时才出「其他 / 全部」。
+// 自带的「关闭其他标签页」只在主区有、只管同一组，叠放出来的每一页各占一组，所以另做。固定了的标签不关；全关之后没笔记了就收起侧边栏
+function addStackMenu(app, menu, leaf, text) {
+	const notes = sidebarNotes(app);
+	if (!notes.includes(leaf)) return;
+	const add = (section, key, icon, run) => menu.addItem((item) => item.setSection(section).setTitle(text(key)).setIcon(icon).onClick(run));
+	const others = notes.filter((l) => l !== leaf), multi = notes.length > 1, collapsed = isStackCollapsed(leaf);
+	if (!menu.items.some((it) => it.section === "close")) add("close", "stackClose", "lucide-x", () => leaf.detach());   // 「⋯」菜单里没有自带的「关闭」
+	if (multi) {
+		add("close", "stackCloseOthers", "lucide-x", () => others.forEach((l) => { if (!l.pinned) l.detach(); }));
+		add("close", "stackCloseAll", "lucide-x", () => {
+			notes.forEach((l) => { if (!l.pinned) l.detach(); });
+			if (!sidebarNotes(app).length) app.workspace.rightSplit.collapse();
+		});
+	}
+	if (!collapsed) add("pane", "stackCollapse", "lucide-chevrons-down-up", () => setStackCollapsed(leaf, true));
+	if (multi) {
+		// 和这一页在同一组里的不折：折了就把这一页也折了
+		add("pane", "stackCollapseOthers", "lucide-chevrons-down-up", () => others.forEach((l) => { if (l.parent !== leaf.parent) setStackCollapsed(l, true); }));
+		add("pane", "stackCollapseAll", "lucide-chevrons-down-up", () => notes.forEach((l) => setStackCollapsed(l, true)));
+	}
+	if (collapsed) add("pane", "stackExpand", "lucide-chevrons-up-down", () => setStackCollapsed(leaf, false));
+	if (multi) add("pane", "stackExpandAll", "lucide-chevrons-up-down", () => notes.forEach((l) => setStackCollapsed(l, false)));
+	if (leaf.getViewState().state?.file) add("open", "stackOpenInMain", "lucide-arrow-up-right", () => openInMain(app, leaf));
+}
+
+// 在主区打开（Logseq 的 Open as page）：侧边栏里这一页留着，主区最近用的那个标签换成它；那个标签固定了就在它旁边开新标签
+async function openInMain(app, leaf) {
+	const ws = app.workspace, main = ws.getMostRecentLeaf(ws.rootSplit);
+	const target = main.pinned ? ws.createLeafInParent(main.parent, main.parent.children.indexOf(main) + 1) : main;
+	const { type, state } = leaf.getViewState();
+	await target.setViewState({ type, state, active: true });
+	ws.setActiveLeaf(target, { focus: true });
+}
+
 module.exports = class LogseqEditing extends Plugin {
 	onload() {
 		this.blockLines = blockLines;     // 方便在控制台里测试
@@ -460,6 +546,9 @@ module.exports = class LogseqEditing extends Plugin {
 		const listen = (win) => { this.registerDomEvent(win, "mousedown", onShiftClick, true); this.registerDomEvent(win, "click", onShiftClick, true); };
 		listen(window);
 		this.registerEvent(ws.on("window-open", (w, win) => listen(win)));
+		// 右侧栏叠放的菜单和折叠：没人管就接过来；装了同一份代码的另一个插件（roam-backlinks）停用时也接过来
+		this.registerEvent(ws.on(STACK_RELEASED, () => this.claimSidebarStack()));
+		this.claimSidebarStack();
 		this.beforeCompose = new WeakMap();   // view → 输入法开始组字前的 state
 		this.addCommand({
 			id: "insert-divider-below",
@@ -1142,10 +1231,10 @@ module.exports = class LogseqEditing extends Plugin {
 	addLinkMenuItems(menu, linktext, sourcePath) {
 		if (!Platform.isPhone) {
 			menu.items = menu.items.filter((it) => !(it.section === "open" && it.iconEl?.querySelector(".lucide-separator-vertical")));
-			menu.addItem((item) => item.setSection("open").setTitle("在拆分视图中打开").setIcon("lucide-separator-vertical")
+			menu.addItem((item) => item.setSection("open").setTitle(tr("openInSplit")).setIcon("lucide-separator-vertical")
 				.onClick(() => this.app.workspace.openLinkText(linktext, sourcePath, "split")));
 		}
-		menu.addItem((item) => item.setSection("open").setTitle("在侧边栏中打开").setIcon("lucide-panel-right")
+		menu.addItem((item) => item.setSection("open").setTitle(tr("openInSidebar")).setIcon("lucide-panel-right")
 			.onClick(() => this.openInSidebar(linktext, sourcePath)));
 	}
 
@@ -1179,18 +1268,31 @@ module.exports = class LogseqEditing extends Plugin {
 		return tok?.type === "internal-link" ? { linktext: tok.text, sourcePath: info.file?.path || "" } : null;
 	}
 
-	// 在右侧栏打开双链，文件不存在先建。装了 roam-backlinks 就用它的叠放（它只打开已有的文件，所以先建好）
+	// 在右侧栏叠放打开双链（文件不存在时 openLinkText 自己会建）
 	async openInSidebar(linktext, sourcePath) {
-		const ws = this.app.workspace, rb = this.app.plugins.plugins["roam-backlinks"];
-		if (rb?.openStackedLink) {
-			const { path } = parseLinktext(linktext);
-			if (!this.app.metadataCache.getFirstLinkpathDest(path, sourcePath)) await this.app.fileManager.createNewMarkdownFileFromLinktext(path, sourcePath);
-			return rb.openStackedLink(linktext, sourcePath);
-		}
-		if (ws.rightSplit.collapsed) ws.rightSplit.expand();
-		const leaf = ws.getRightLeaf(false);
+		const leaf = stackLeaf(this.app);
 		await leaf.openLinkText(linktext, sourcePath);
-		ws.revealLeaf(leaf);
+		this.app.workspace.revealLeaf(leaf);
+	}
+
+	// 接管右侧栏叠放的菜单和折叠（两个插件都装时只跑一份，见 STACK_OWNER）
+	claimSidebarStack() {
+		const ws = this.app.workspace;
+		if (this.stackReleased || ws[STACK_OWNER]) return;
+		ws[STACK_OWNER] = this.manifest.id;
+		const c = this.addChild(new Component());
+		c.registerEvent(ws.on("leaf-menu", (menu, leaf) => addStackMenu(this.app, menu, leaf, tr)));
+		// 折叠了的页：点它的标签页头、或者它被激活，就展开
+		c.registerEvent(ws.on("active-leaf-change", (leaf) => { if (leaf && isStackCollapsed(leaf)) setStackCollapsed(leaf, false); }));
+		c.registerDomEvent(document, "click", (e) => {
+			const group = e.target.closest?.(`.workspace-tabs.${STACK_COLLAPSED}`);
+			if (group && e.target.closest(".workspace-tab-header-container")) group.removeClass(STACK_COLLAPSED);
+		});
+		c.register(() => {   // 停用时让出来，另一个插件接手（自己正在卸载，别再接回来）
+			delete ws[STACK_OWNER];
+			this.stackReleased = true;
+			ws.trigger(STACK_RELEASED);
+		});
 	}
 
 	// ---------- ⌘K 分割线 ----------

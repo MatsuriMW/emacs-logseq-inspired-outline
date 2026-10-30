@@ -1,12 +1,12 @@
 name: Release
 
-# main.js / manifest.json 推送到 main 后：manifest 里的版本号还没有对应的标签，就发一个新版本。
-# Obsidian 社区插件的要求：标签 = manifest.json 的 version（不带 v），附件是 main.js、manifest.json（这个插件没有 styles.css）。
+# main.js / manifest.json / styles.css 推送到 main 后：manifest 里的版本号还没有对应的标签，就发一个新版本。
+# Obsidian 社区插件的要求：标签 = manifest.json 的 version（不带 v），附件是 main.js、manifest.json、styles.css。
 # 版本号由本地的 sync.sh 自动加一（提交说明末尾写 #minor / #major 升大版本）。
 on:
   push:
     branches: [main]
-    paths: ["main.js", "manifest.json"]
+    paths: ["main.js", "manifest.json", "styles.css"]
   workflow_dispatch:
 
 permissions:
@@ -44,12 +44,12 @@ jobs:
             echo
             git log --no-merges --format='- %s' $range | sed -E 's/ *#(minor|major)[[:space:]]*$//'
             echo
-            echo "Install: download \`main.js\` and \`manifest.json\` into \`<vault>/.obsidian/plugins/emacs-logseq-inspired-outline/\`, or use BRAT (MatsuriMW/emacs-logseq-inspired-outline)."
+            echo "Install: download \`main.js\`, \`manifest.json\` and \`styles.css\` into \`<vault>/.obsidian/plugins/emacs-logseq-inspired-outline/\`, or use BRAT (MatsuriMW/emacs-logseq-inspired-outline)."
           } > notes.md
           cat notes.md
 
       - name: Publish
         if: steps.ver.outputs.skip == 'false'
-        run: gh release create "${{ steps.ver.outputs.new }}" main.js manifest.json --target "$GITHUB_SHA" --title "${{ steps.ver.outputs.new }}" --notes-file notes.md --latest
+        run: gh release create "${{ steps.ver.outputs.new }}" main.js manifest.json styles.css --target "$GITHUB_SHA" --title "${{ steps.ver.outputs.new }}" --notes-file notes.md --latest
         env:
           GH_TOKEN: ${{ github.token }}

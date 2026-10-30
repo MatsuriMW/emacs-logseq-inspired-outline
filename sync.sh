@@ -1,6 +1,6 @@
 #!/bin/zsh
 # 维护者用：正本是作者主库里的 .obsidian/plugins/emacs-logseq-inspired-outline/。改完跑这个：
-#   从主库把 main.js 复制过来，有改动就把版本号加一（manifest.json、versions.json，主库里的 manifest.json 一起改），
+#   从主库把 main.js、styles.css 复制过来，有改动就把版本号加一（manifest.json、versions.json，主库里的 manifest.json 一起改），
 #   再提交、推送。推送后 GitHub Actions 按 Obsidian 的格式发 Release。
 # 用法：./sync.sh "改了什么"      说明里某一行的末尾写 #minor / #major 升大版本（1.0.3 → 1.1.0 / 2.0.0）
 set -e
@@ -8,8 +8,8 @@ R="${0:A:h}"
 SRC="${EMACS_LOGSEQ_INSPIRED_OUTLINE_SRC:-$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/马自立/.obsidian/plugins/emacs-logseq-inspired-outline}"
 MSG="${1:-同步}"
 cd "$R"
-cp "$SRC/main.js" "$R/"
-if ! git diff --quiet HEAD -- main.js 2>/dev/null || [ -n "$(git status --porcelain main.js)" ]; then
+cp "$SRC/main.js" "$SRC/styles.css" "$R/"
+if ! git diff --quiet HEAD -- main.js styles.css 2>/dev/null || [ -n "$(git status --porcelain main.js styles.css)" ]; then
   python3 - "$MSG" "$SRC/manifest.json" <<'PY'
 import json, re, sys
 msg, vault_manifest = sys.argv[1], sys.argv[2]
